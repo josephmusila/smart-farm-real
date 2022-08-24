@@ -3,6 +3,10 @@
 #include <ArduinoJson.h>
 #include  <avr/io.h> 
 
+
+
+
+
 uint8_t oldSREG=SREG;
 
 
@@ -12,6 +16,7 @@ SoftwareSerial gserial(2,3);
 
 
 String cmmd="";
+ String menu="Select the Data to Query.\n-----------------------\n-> Lighting\n-> Temperature\n-> Water Level\n-> Soil Moisture\n ";
 #define SIM800_TX 2
 #define SIM800_RX 3
 
@@ -26,10 +31,10 @@ char incomingByte;
 String incomingData;
 bool atCommand=true;
 
-  StaticJsonBuffer<1000> jsonBuffer;
+  // StaticJsonBuffer<1000> jsonBuffer;
 
 
-  JsonObject&  data=jsonBuffer.createObject();
+  // JsonObject&  data=jsonBuffer.createObject();
 
 
 
@@ -39,6 +44,7 @@ bool atCommand=true;
 //photocell variables
 #define photocellpin A5
 int photocellvalue=0;
+String lightStatus;
 
 //water level variables
 #define waterValuePin A1
@@ -49,12 +55,17 @@ int waterLevel = 0;
 #define soilSensorPower 10
 #define soilSensorPin A2
 int soilMoistureValue=0;
+String moistureStatus;
 
 // temperature variables
 float temp;
+
 #define tempPin A4
 
 // motor power
+
+
+
 
 void sendSMS(String response){
   gserial.println("AT+CMGF=1");
@@ -154,7 +165,12 @@ void setup() {
   gserial.println("AT+CMGL=\"REC UNREAD\""); //read unread messages
 
   Serial.println("Ready to receive commands");
-  // sendSMS("Connected");
+
+ 
+  sendSMS("Connected");
+  sendSMS(menu);
+  delay(100);
+  
   
 }
 
@@ -186,14 +202,22 @@ int getWaterLevel(){
 }
 
 
-int readSoilSensor(){
+void readSoilSensor(){
  digitalWrite(soilSensorPower,HIGH);
  delay(10);
   soilMoistureValue=analogRead(soilSensorPin);
    digitalWrite(soilSensorPower,HIGH);
    Serial.print("Soil Moisture Value: ");
    Serial.println(soilMoistureValue);
- return soilMoistureValue;
+
+   if(soilMoistureValue > 1000){
+    moistureStatus="Very Dry";
+   }else if(soilMoistureValue > 500){
+    moistureStatus="Moderately Moist";
+   }else{
+    moistureStatus="Very Wet";
+   }
+ 
 }
 
 
@@ -206,6 +230,15 @@ void photocell(){
   photocellvalue=analogRead(photocellpin);
   Serial.print("Light intensity value: ");
   Serial.println(photocellvalue,DEC);
+  if (photocellvalue>200)
+  {
+   lightStatus="Dark";
+  }else if(photocellvalue>100){
+    lightStatus="Low Light";
+  }else{
+    lightStatus="Well Lit";
+  }
+  
   delay(1000);
 }
 
@@ -224,6 +257,48 @@ void receivedMessage(String inputString){
   message.trim();
   Serial.println("Message: " + message);
   message.toUpperCase();
+  //get menu
+
+  if(message.indexOf("MENU")> -1){
+  
+    String response=menu;
+    Serial.println(response);
+    sendSMS(response);
+  }
+
+   if(message.indexOf("TEMPERATURE")> -1){
+  
+    String response=String(temp);
+    Serial.println(response);
+    // response.append("\xB0");
+    sendSMS("Current temperature is: " +  response + "C");
+  }
+
+   if(message.indexOf("WATER LEVEL")> -1){
+  
+    String response=String(waterLevel);
+    Serial.println(response);
+    
+    sendSMS("Current Water Level is: " +  response + "%");
+  }
+
+     if(message.indexOf("LIGHTING")> -1){
+  
+    String response=String(photocellvalue);
+    Serial.println(response);
+    sendSMS("Light Intensity Value: " +  response + ".\n Lighting Status: " + lightStatus);
+  }
+
+
+   if(message.indexOf("SOIL MOISTUR")> -1){
+  
+    String response=String(soilMoistureValue);
+    Serial.println(response);
+    sendSMS("Current Soil Moisture Value is: " +  response + ".\n Soil Moisture Status: " + moistureStatus);
+  }
+
+
+
 
   //turn device 1 on
 
@@ -261,6 +336,10 @@ void receivedMessage(String inputString){
     Serial.println(response);
     sendSMS(response);
   }
+  // else{
+  //   sendSMS("invalid option");
+  //   return;
+  // }
   delay(50);
 }
 
@@ -294,6 +373,7 @@ void getData(){
   photocell();
   getTemperature();
    Serial.println(temp);
+   
 
   Serial.println("-------------------------------------------------");
  
@@ -326,20 +406,20 @@ void loop() {
 
 
 
-  startFan();
+  // startFan();
    getWaterLevel();
   readSoilSensor();
   photocell();
   getTemperature();
    Serial.println(temp);
 
-  Serial.println("-------------------------------------------------");
+  // Serial.println("-------------------------------------------------");
   
    
 
   
 
-  
+//  Serial.println(currentDateTime());  
  
   
  
@@ -386,4 +466,6 @@ void stopFan(){
   digitalWrite(fan,LOW);
   }
 
-  
+  // Arduino’s are microcontrollers without operating systems or any kind of persistent storage,
+  //  so lack anything that could remember the data and time.
+  //  The best you can do is the mills() function that give the number of milliseconds since the Arduino was last reset.
