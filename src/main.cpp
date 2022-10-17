@@ -16,7 +16,17 @@ SoftwareSerial gserial(2,3);
 
 
 String cmmd="";
- String menu="Select the Data to Query.\n-----------------------\n-> Lighting\n-> Temperature\n-> Water Level\n-> Soil Moisture\n ";
+String menu=R"""(
+  -> Lighting
+  -> Temperature
+  -> Water Level
+  -> Soil Moisture
+  -> Pump on/off
+ )""";
+
+
+ String currentChannel="gsm";
+
 #define SIM800_TX 2
 #define SIM800_RX 3
 
@@ -40,6 +50,7 @@ bool atCommand=true;
 
 
 #define fan 9
+#define lighting 8
 
 //photocell variables
 #define photocellpin A5
@@ -51,6 +62,7 @@ String lightStatus;
 int waterLevel = 0;
 #define watervaluePower 7
 
+
 //soil moisture variables
 #define soilSensorPower 10
 #define soilSensorPin A2
@@ -59,13 +71,20 @@ String moistureStatus;
 
 // temperature variables
 float temp;
+float sensorValue;
+float voltageOut;
 
-#define tempPin A4
+float temperatureC;
+float temperatureF;
+
+#define tempPin A0
 
 // motor power
 
 
-
+void setwifi(){
+  currentChannel="wifi";
+}
 
 void sendSMS(String response){
   gserial.println("AT+CMGF=1");
@@ -96,61 +115,9 @@ void sendSMS(String response){
 //   }
 // }
 
-void setup() {
-  
-  pinMode(fan,OUTPUT);
-  pinMode(watervaluePower,OUTPUT);
-  digitalWrite(watervaluePower,LOW);
-  pinMode(soilSensorPower,OUTPUT);
-  pinMode(device_1,OUTPUT);
-  pinMode(device_2,OUTPUT);
-
-  digitalWrite(device_1,LOW);
-  digitalWrite(device_2,LOW);
-
-
-
- 
-  nodemcu.begin(9600);
+void  gsmSetUp(){
   gserial.begin(9600);
- 
-   Serial.begin(9600); 
-//   Serial.print("Initializing....");
-
-
-//  // initialize the sim800l
-
-//   gserial.println("AT");
-//   updateSerial();
-
-//   gserial.println("AT+CSQ");
-//   updateSerial();
-
-//   gserial.println("AT+CCID");
-//   updateSerial();
-
-//   gserial.println('AT+CPIN');
-//   updateSerial();
-
-//   gserial.println("AT+COPS?");
-//   updateSerial();
-
-//   gserial.println("AT+CBC");
-//   updateSerial();
-
-//   gserial.println("AT+CREG?");
-//   updateSerial();
-
-//   gserial.println("AT+CMGF=1");
-//   updateSerial();
-
-//   gserial.println("AT+CNMI=1,2,0,0,0");
-//   updateSerial(); 
-
-
-//   delay(1000);
-
-  while(!gserial.available()){
+   while(!gserial.available()){
     gserial.println("AT");
     delay(1000);
     Serial.println("Connecting....");
@@ -171,18 +138,60 @@ void setup() {
   sendSMS(menu);
   delay(100);
   
+}
+void setup() {
+  
+  pinMode(fan,OUTPUT);
+  pinMode(watervaluePower,OUTPUT);
+  digitalWrite(watervaluePower,LOW);
+  pinMode(soilSensorPower,OUTPUT);
+  pinMode(device_1,OUTPUT);
+  pinMode(device_2,OUTPUT);
+  pinMode(lighting,OUTPUT);
+
+  digitalWrite(device_1,LOW);
+  digitalWrite(device_2,LOW);
+
+
+
+ 
+  nodemcu.begin(9600);
+  
+ 
+   Serial.begin(9600); 
+
+
+
+// if(currentChannel=="gsm"){
+  gsmSetUp();
+// }
+
+ 
   
 }
 
 
 float getTemperature(){
   temp=analogRead(tempPin);
-  temp = temp * 0.48828125;
+  temp = temp * 0.0.004882814;
   Serial.print("Temperature: ");
   Serial.print(temp);
   Serial.println("C");
   delay(1000);
   return temp;
+
+  // voltageOut = (temp * 5000) / 1024;
+  
+  // // calculate temperature for LM35 (LM35DZ)
+  // temperatureC = voltageOut / 10;
+  // temperatureF = (temperatureC - 32.0)*(5.0/9.0);
+  // Serial.print("Temperature: ");
+  // Serial.print(temperatureF);
+  // return temperatureF;
+
+  // calculate temperature for LM34
+  //temperatureF = voltageOut / 10;
+  //temperatureC = (temperatureF - 32.0)*(5.0/9.0);
 }
 
 int getWaterLevel(){
@@ -221,8 +230,22 @@ void readSoilSensor(){
 }
 
 
-void startFan(){
-  digitalWrite(fan,HIGH);
+void startPump(){
+  if(getWaterLevel()>50){
+    digitalWrite(device_1,LOW);
+  
+  }
+ 
+   
+}
+void irrigation(){
+  if(soilMoistureValue>900){
+    digitalWrite(device_2,LOW);
+  }else{
+    digitalWrite(device_2,HIGH);
+  }
+
+ 
    
 }
 void photocell(){
@@ -233,10 +256,13 @@ void photocell(){
   if (photocellvalue>200)
   {
    lightStatus="Dark";
+   digitalWrite(lighting,HIGH);
   }else if(photocellvalue>100){
     lightStatus="Low Light";
+    digitalWrite(lighting,HIGH);
   }else{
     lightStatus="Well Lit";
+    digitalWrite(lighting,LOW);
   }
   
   delay(1000);
@@ -259,7 +285,7 @@ void receivedMessage(String inputString){
   message.toUpperCase();
   //get menu
 
-  if(message.indexOf("MENU")> -1){
+  if(message.indexOf("COMMANDS")> -1){
   
     String response=menu;
     Serial.println(response);
@@ -269,9 +295,18 @@ void receivedMessage(String inputString){
    if(message.indexOf("TEMPERATURE")> -1){
   
     String response=String(temp);
-    Serial.println(response);
+    // Serial.println(response);
     // response.append("\xB0");
-    sendSMS("Current temperature is: " +  response + "C");
+    // sendSMS("Current temperature is: " +  response + "C");
+    sendSMS(String(temp));
+  }
+  if(message.indexOf("WIFI")> -1){
+    currentChannel="wifi";
+
+    // String response=String(temp);
+    // Serial.println(response);
+    // response.append("\xB0");
+    sendSMS("Using Wifi");
   }
 
    if(message.indexOf("WATER LEVEL")> -1){
@@ -286,7 +321,7 @@ void receivedMessage(String inputString){
   
     String response=String(photocellvalue);
     Serial.println(response);
-    sendSMS("Light Intensity Value: " +  response + ".\n Lighting Status: " + lightStatus);
+    sendSMS("Light Intensity: " +  response + ".\nStatus: " + lightStatus);
   }
 
 
@@ -294,45 +329,41 @@ void receivedMessage(String inputString){
   
     String response=String(soilMoistureValue);
     Serial.println(response);
-    sendSMS("Current Soil Moisture Value is: " +  response + ".\n Soil Moisture Status: " + moistureStatus);
+    sendSMS("Soil Moisture Value: " +  response + ".\nMoisture Status: " + moistureStatus);
   }
 
 
-
-
-  //turn device 1 on
-
-  if(message.indexOf("D1 ON")> -1){
+  if(message.indexOf("PUMP OFF")> -1){
     digitalWrite(device_1,HIGH);
     // delay(1000);
-    String response="Command: Device 1 Turn on";
+    String response="Command: Pump Turn off";
     Serial.println(response);
     sendSMS(response);
   }
 
-  // turn device 1 off
-   if(message.indexOf("D1 OFF")> -1){
+  
+   if(message.indexOf("PUMP ON")> -1){
     digitalWrite(device_1,LOW);
-    String response="Command: Device 1 Turn off";
+    String response="Command: Pump Turn on";
     Serial.println(response);
     sendSMS(response);
   }
 
-   //turn device 2 on
+  
 
-  if(message.indexOf("D2 ON")> -1){
+  if(message.indexOf("IRRIGATION OFF")> -1){
     digitalWrite(device_2,HIGH);
     // delay(1000);
-    String response="Command: Device 2 Turn on";
+    String response="Command: Device 2 Turn off";
     Serial.println(response);
     sendSMS(response);
   }
 
-  // turn device 2 off
-   if(message.indexOf("D2 OFF")> -1){
+
+   if(message.indexOf("IRRIGATION ON")> -1){
     digitalWrite(device_2,LOW);
    
-   String response="Command: Device 2 Turn off";
+   String response="Command: Device 2 Turn on";
     Serial.println(response);
     sendSMS(response);
   }
@@ -344,86 +375,37 @@ void receivedMessage(String inputString){
 }
 
 
-void getData(){
+void WifiCommuication(){
 
-//  StaticJsonBuffer<1000> jsonBuffer;
+ StaticJsonBuffer<1000> jsonBuffer;
 
 
-//   JsonObject&  data=jsonBuffer.createObject();
+  JsonObject&  data=jsonBuffer.createObject();
 
   
 
-//   data["soilMoisture"] = soilMoistureValue;
-//   data["photocellvalue"] = photocellvalue;
-//   data["waterLevel"] = waterLevel;
-//   data["temperature"] = temp;
+  data["soilMoisture"] = soilMoistureValue;
+  data["photocellvalue"] = photocellvalue;
+  data["waterLevel"] = waterLevel;
+  data["temperature"] = temp;
 
 
-//   data.printTo(nodemcu);
-//   jsonBuffer.clear();
+  data.printTo(nodemcu);
+  jsonBuffer.clear();
 
-//   delay(2000);
-
-
+  delay(2000);
 
 
-  startFan();
-   getWaterLevel();
-  readSoilSensor();
-  photocell();
-  getTemperature();
-   Serial.println(temp);
-   
 
-  Serial.println("-------------------------------------------------");
+
+  
  
 
 }
 
-void loop() {
-  // while(true){
-    
-  //  nodemcu.begin(9600);
-//   Serial.println("opened wifi comm");
-
-
-
-  
-
-  
-
-  // data["soilMoisture"] = soilMoistureValue;
-  // data["photocellvalue"] = photocellvalue;
-  // data["waterLevel"] = waterLevel;
-  // data["temperature"] = temp;
-
-
-//   data.printTo(nodemcu);
-//   jsonBuffer.clear();
-
-//   delay(2000);
-
-
-
-
-  // startFan();
-   getWaterLevel();
-  readSoilSensor();
-  photocell();
-  getTemperature();
-   Serial.println(temp);
-
-  // Serial.println("-------------------------------------------------");
-  
-   
-
-  
-
-//  Serial.println(currentDateTime());  
+void GsmCommunication(){
  
-  
- 
-  if(gserial.available()){
+   if(gserial.available()){
     delay(100);
    
    
@@ -457,6 +439,55 @@ void loop() {
 
   }
    
+}
+
+void loop() {
+  
+
+
+  // startFan();
+ 
+   getWaterLevel();
+  readSoilSensor();
+  photocell();
+  getTemperature();
+   startPump();
+   irrigation();
+   
+  
+  Serial.println("currentChannel :" + currentChannel);
+  Serial.println("-------------------------------------------------");
+  if(currentChannel =="gsm"){
+    GsmCommunication();
+    // currentChannel="wifi";
+    // delay(1000);
+
+  }
+ else{
+  WifiCommuication();
+  // currentChannel="gsm";
+  //   delay(3000);
+  // StaticJsonBuffer<1000> jsonBuffer;
+
+
+  // JsonObject&  data=jsonBuffer.createObject();
+
+  
+
+  // data["soilMoisture"] = soilMoistureValue;
+  // data["photocellvalue"] = photocellvalue;
+  // data["waterLevel"] = waterLevel;
+  // data["temperature"] = temp;
+
+
+  // data.printTo(nodemcu);
+  // jsonBuffer.clear();
+  // Serial.println("Sent to esp");
+  //  GsmCommunication();
+  // delay(2000);
+
+ }
+// delay(6000);
 
 }
 
@@ -465,7 +496,3 @@ void loop() {
 void stopFan(){
   digitalWrite(fan,LOW);
   }
-
-  // Arduino’s are microcontrollers without operating systems or any kind of persistent storage,
-  //  so lack anything that could remember the data and time.
-  //  The best you can do is the mills() function that give the number of milliseconds since the Arduino was last reset.
